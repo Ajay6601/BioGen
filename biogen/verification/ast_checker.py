@@ -3,44 +3,26 @@ import sys
 
 # Known valid top-level imports in biogen-generated scripts
 KNOWN_MODULES = {
-    "scanpy",
-    "sc",
-    "anndata",
-    "ad",
-    "pandas",
-    "pd",
-    "numpy",
-    "np",
-    "matplotlib",
-    "matplotlib.pyplot",
-    "plt",
-    "seaborn",
-    "sns",
-    "pydeseq2",
-    "pydeseq2.dds",
-    "pydeseq2.ds",
-    "os",
-    "sys",
-    "pathlib",
-    "argparse",
-    "logging",
-    "warnings",
-    "adjustText",
-    "scipy",
-    "sklearn",
+    "scanpy", "sc", "anndata", "ad", "pandas", "pd", "numpy", "np",
+    "matplotlib", "matplotlib.pyplot", "plt", "seaborn", "sns",
+    "pydeseq2", "pydeseq2.dds", "pydeseq2.ds",
+    "os", "sys", "pathlib", "argparse", "logging", "warnings",
+    "adjustText", "scipy", "sklearn",
 }
 
 
-def check_ast(script: str, *, require_main: bool = True) -> list[str]:
+def check_ast(script: str) -> list[str]:
     """Parse script and check for syntax errors + import issues."""
-    issues: list[str] = []
+    issues = []
 
+    # 1. Syntax check
     try:
         tree = ast.parse(script)
     except SyntaxError as e:
         issues.append(f"SyntaxError at line {e.lineno}: {e.msg}")
-        return issues
+        return issues  # Can't continue without valid AST
 
+    # 2. Check imports resolve to known modules
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
@@ -57,25 +39,24 @@ def check_ast(script: str, *, require_main: bool = True) -> list[str]:
                         f"Line {node.lineno}: unknown import from '{node.module}'"
                     )
 
+    # 3. Check for common LLM code-gen mistakes
     source_lines = script.splitlines()
     for i, line in enumerate(source_lines, 1):
         stripped = line.strip()
+        # Catch placeholder comments
         if "TODO" in stripped or "..." == stripped:
-            if not (stripped.startswith("#") or stripped.startswith('"""')):
+            if not (stripped.startswith("#") or stripped.startswith("\"\"\"")):
                 issues.append(f"Line {i}: placeholder/ellipsis found: '{stripped}'")
+        # Catch print statements (should use logging)
+        if stripped.startswith("print(") and "savefig" not in stripped:
+            pass  # Allow prints in generated scripts for now
 
-    if require_main:
-        func_names = [
-            node.name
-            for node in ast.walk(tree)
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-        ]
-        if "main" not in func_names:
-            issues.append("Missing main() function")
+    # 4. Check main() function exists
+    func_names = [
+        node.name for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    ]
+    if "main" not in func_names:
+        issues.append("Missing main() function")
 
     return issues
-
-
-def is_valid_python(code: str) -> bool:
-    """True if there are no AST issues (snippets allowed without main())."""
-    return len(check_ast(code, require_main=False)) == 0
