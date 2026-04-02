@@ -1,6 +1,7 @@
-from biogen.verification.sandbox import execute_safely
+from biogen.verification.sandbox import execute_in_sandbox
 
 
-def test_execute_safely_returns_ok_status() -> None:
-    result = execute_safely("a = 1\nb = a + 2")
-    assert result["status"] == "ok"
+def test_execute_in_sandbox_runs_minimal_script() -> None:
+    script = "def main(data_path, output_dir):\n    pass\n"
+    ok, _out = execute_in_sandbox(script, "nonexistent.csv", "outputs")
+    assert ok is True
