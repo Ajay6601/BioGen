@@ -1,10 +1,97 @@
-tool: scanpy
-parameters:
-  n_neighbors:
-    type: integer
-    min: 2
-    max: 200
-  min_dist:
-    type: float
-    min: 0.0
-    max: 1.0
+# Parameter constraints for scanpy functions
+
+"sc.pp.filter_cells":
+  params:
+    min_genes:
+      type: int
+      min: 1
+      max: 10000
+      description: "Minimum number of genes expressed per cell"
+
+"sc.pp.filter_genes":
+  params:
+    min_cells:
+      type: int
+      min: 1
+      max: 10000
+      description: "Minimum number of cells expressing a gene"
+
+"sc.pp.normalize_total":
+  params:
+    target_sum:
+      type: float
+      min: 100
+      max: 1000000
+      description: "Target total counts per cell after normalization"
+
+"sc.pp.highly_variable_genes":
+  params:
+    n_top_genes:
+      type: int
+      min: 100
+      max: 10000
+      description: "Number of highly variable genes to select"
+    min_mean:
+      type: float
+      min: 0.0
+      max: 1.0
+    max_mean:
+      type: float
+      min: 1.0
+      max: 100.0
+
+"sc.pp.neighbors":
+  params:
+    n_neighbors:
+      type: int
+      min: 2
+      max: 200
+      description: "Number of neighbors for kNN graph"
+    n_pcs:
+      type: int
+      min: 2
+      max: 100
+      description: "Number of PCs to use"
+
+"sc.tl.umap":
+  params:
+    min_dist:
+      type: float
+      min: 0.0
+      max: 1.0
+    spread:
+      type: float
+      min: 0.1
+      max: 10.0
+
+"sc.tl.leiden":
+  params:
+    resolution:
+      type: float
+      min: 0.01
+      max: 10.0
+      description: "Clustering resolution"
+
+"sc.tl.louvain":
+  params:
+    resolution:
+      type: float
+      min: 0.01
+      max: 10.0
+
+"sc.tl.rank_genes_groups":
+  params:
+    n_genes:
+      type: int
+      min: 1
+      max: 5000
+    method:
+      type: str
+      allowed: ["t-test", "wilcoxon", "t-test_overestim_var", "logreg"]
+
+"sc.pp.pca":
+  params:
+    n_comps:
+      type: int
+      min: 2
+      max: 200

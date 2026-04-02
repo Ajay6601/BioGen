@@ -1,8 +1,27 @@
-tool: pydeseq2
-parameters:
-  fit_type:
-    type: string
-    allowed: [parametric, mean]
-  min_replicates:
-    type: integer
-    min: 2
+# Parameter constraints for PyDESeq2 functions
+
+DeseqDataSet:
+  params:
+    n_cpus:
+      type: int
+      min: 1
+      max: 64
+      description: "Number of CPUs for parallel processing"
+
+DeseqStats:
+  params:
+    alpha:
+      type: float
+      min: 0.001
+      max: 0.1
+      description: "Significance threshold for adjusted p-values"
+    contrast:
+      type: list
+      description: "Contrast for DE test, e.g. ['condition', 'treated', 'control']"
+
+# Common function patterns
+".deseq2()":
+  params: {}
+
+"results_df":
+  params: {}
