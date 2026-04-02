@@ -1,10 +1,179 @@
-[
-  {
-    "query": "Run differential expression on treated vs control samples",
-    "expected": "differential_expression_results"
-  },
-  {
-    "query": "Perform PCA and UMAP on single-cell dataset",
-    "expected": "embedding_coordinates"
-  }
-]
+{
+  "queries": [
+    {
+      "id": "bulk_de_01",
+      "query": "Run differential expression analysis on this bulk RNA-seq count matrix comparing treated vs control samples. Use adjusted p-value threshold of 0.05 and generate a volcano plot.",
+      "analysis_type": "bulk_rnaseq_de",
+      "data_info": "CSV count matrix with genes as rows, samples as columns. Metadata CSV with sample names and condition column (treated/control).",
+      "expected_outputs": ["results.csv", "volcano_plot.png"]
+    },
+    {
+      "id": "bulk_de_02",
+      "query": "Perform DESeq2 analysis on RNA-seq counts, identify the top 20 differentially expressed genes by log2 fold change, and create a heatmap of their expression across samples.",
+      "analysis_type": "bulk_rnaseq_de",
+      "data_info": "CSV count matrix with genes as rows, samples as columns. Metadata CSV with condition column.",
+      "expected_outputs": ["top_genes.csv", "heatmap.png"]
+    },
+    {
+      "id": "bulk_de_03",
+      "query": "Run differential expression between wild-type and knockout samples. Filter for genes with absolute log2 fold change greater than 1 and adjusted p-value less than 0.01. Save the filtered results.",
+      "analysis_type": "bulk_rnaseq_de",
+      "data_info": "CSV count matrix. Metadata with genotype column (WT/KO).",
+      "expected_outputs": ["filtered_de_results.csv"]
+    },
+    {
+      "id": "bulk_de_04",
+      "query": "Analyze this RNA-seq dataset for differential expression. Generate an MA plot showing log2 fold change vs mean expression, highlighting significant genes in red.",
+      "analysis_type": "bulk_rnaseq_de",
+      "data_info": "CSV count matrix with condition metadata.",
+      "expected_outputs": ["de_results.csv", "ma_plot.png"]
+    },
+    {
+      "id": "bulk_de_05",
+      "query": "Compare gene expression between drug-treated and DMSO control groups. Run DESeq2, apply log2 fold change shrinkage, and export the full results table sorted by adjusted p-value.",
+      "analysis_type": "bulk_rnaseq_de",
+      "data_info": "Count matrix CSV. Metadata with treatment column (drug/DMSO).",
+      "expected_outputs": ["de_results_sorted.csv"]
+    },
+    {
+      "id": "bulk_de_06",
+      "query": "Perform PCA on the variance-stabilized counts from this RNA-seq experiment and color the samples by condition to check for batch effects.",
+      "analysis_type": "bulk_rnaseq_de",
+      "data_info": "CSV count matrix. Metadata with condition and batch columns.",
+      "expected_outputs": ["pca_plot.png"]
+    },
+    {
+      "id": "bulk_de_07",
+      "query": "Run differential expression analysis and generate both a volcano plot and a table of the top 50 upregulated genes sorted by log2 fold change.",
+      "analysis_type": "bulk_rnaseq_de",
+      "data_info": "Count matrix CSV with treated vs untreated metadata.",
+      "expected_outputs": ["volcano_plot.png", "top_upregulated.csv"]
+    },
+    {
+      "id": "bulk_de_08",
+      "query": "Normalize the count matrix using DESeq2 size factors and export the normalized counts as a CSV for downstream analysis.",
+      "analysis_type": "bulk_rnaseq_de",
+      "data_info": "Raw count matrix CSV with metadata.",
+      "expected_outputs": ["normalized_counts.csv"]
+    },
+    {
+      "id": "sc_clust_01",
+      "query": "Process this single-cell RNA-seq dataset: filter low quality cells, normalize, find highly variable genes, run PCA, compute neighbors, cluster with Leiden algorithm, and visualize with UMAP.",
+      "analysis_type": "scrna_clustering",
+      "data_info": "h5ad file with raw counts in .X",
+      "expected_outputs": ["umap.png", "processed.h5ad"]
+    },
+    {
+      "id": "sc_clust_02",
+      "query": "Analyze this scRNA-seq data. Filter cells with fewer than 200 genes or more than 5000 genes, and cells with more than 10% mitochondrial genes. Normalize to 10000 counts per cell, log transform, and cluster.",
+      "analysis_type": "scrna_clustering",
+      "data_info": "h5ad file, gene names in .var_names",
+      "expected_outputs": ["qc_plots.png", "umap_clusters.png"]
+    },
+    {
+      "id": "sc_clust_03",
+      "query": "Find marker genes for each cluster in this scRNA-seq dataset using the Wilcoxon rank-sum test. Show the top 5 markers per cluster in a dot plot.",
+      "analysis_type": "scrna_clustering",
+      "data_info": "Pre-processed h5ad with leiden clusters in .obs['leiden']",
+      "expected_outputs": ["marker_genes.csv", "dotplot.png"]
+    },
+    {
+      "id": "sc_clust_04",
+      "query": "Run the standard scanpy preprocessing pipeline on this 10x Genomics dataset: filter, normalize, HVG selection, PCA with 50 components, neighbors with 15 neighbors, UMAP, and Leiden clustering at resolution 0.5.",
+      "analysis_type": "scrna_clustering",
+      "data_info": "h5ad from 10x Cell Ranger output",
+      "expected_outputs": ["umap.png", "processed.h5ad"]
+    },
+    {
+      "id": "sc_clust_05",
+      "query": "Compare gene expression between two conditions in my single-cell data. Split cells by the 'treatment' column in obs, run differential expression per cluster using Wilcoxon test, and show results as a volcano plot per cluster.",
+      "analysis_type": "scrna_clustering",
+      "data_info": "h5ad with 'treatment' and 'leiden' in .obs",
+      "expected_outputs": ["de_per_cluster.csv", "volcano_plots.png"]
+    },
+    {
+      "id": "sc_clust_06",
+      "query": "Perform trajectory analysis on this scRNA-seq dataset. After standard preprocessing, compute diffusion pseudotime starting from the stem cell cluster and visualize the trajectory on UMAP.",
+      "analysis_type": "scrna_clustering",
+      "data_info": "h5ad file with cell type annotations",
+      "expected_outputs": ["trajectory_umap.png"]
+    },
+    {
+      "id": "sc_clust_07",
+      "query": "Create a UMAP visualization colored by cell type, and generate a stacked violin plot showing expression of genes CD3D, CD8A, CD14, MS4A1, and FOXP3 across cell types.",
+      "analysis_type": "scrna_clustering",
+      "data_info": "Processed h5ad with cell_type in .obs",
+      "expected_outputs": ["umap_celltype.png", "violin.png"]
+    },
+    {
+      "id": "sc_clust_08",
+      "query": "Subsample this scRNA-seq dataset to 5000 cells, re-run the full analysis pipeline (normalize, HVG, PCA, neighbors, UMAP, Leiden), and compare cluster proportions between conditions.",
+      "analysis_type": "scrna_clustering",
+      "data_info": "Large h5ad with condition in .obs",
+      "expected_outputs": ["subsampled_umap.png", "cluster_proportions.csv"]
+    },
+    {
+      "id": "viz_01",
+      "query": "Create a publication-quality volcano plot from these DE results. Color significant genes (padj < 0.05, |log2FC| > 1) in red, label the top 10 genes by significance.",
+      "analysis_type": "visualization",
+      "data_info": "CSV with columns: gene, log2FoldChange, padj",
+      "expected_outputs": ["volcano_plot.png"]
+    },
+    {
+      "id": "viz_02",
+      "query": "Generate a heatmap of the top 30 differentially expressed genes across all samples, with hierarchical clustering on both rows and columns. Use a red-blue color scheme.",
+      "analysis_type": "visualization",
+      "data_info": "Normalized count matrix CSV + DE results CSV",
+      "expected_outputs": ["heatmap.png"]
+    },
+    {
+      "id": "viz_03",
+      "query": "Create a PCA plot of the samples, colored by condition, with sample labels. Include the percentage of variance explained on each axis.",
+      "analysis_type": "visualization",
+      "data_info": "Normalized count matrix CSV with metadata",
+      "expected_outputs": ["pca_plot.png"]
+    },
+    {
+      "id": "viz_04",
+      "query": "Make a bar plot showing the number of upregulated and downregulated genes at different significance thresholds (0.05, 0.01, 0.001).",
+      "analysis_type": "visualization",
+      "data_info": "DE results CSV with log2FoldChange and padj columns",
+      "expected_outputs": ["de_barplot.png"]
+    },
+    {
+      "id": "viz_05",
+      "query": "Plot the expression of gene TP53 across all samples as a box plot grouped by condition, with individual data points overlaid.",
+      "analysis_type": "visualization",
+      "data_info": "Normalized count matrix CSV with metadata",
+      "expected_outputs": ["tp53_boxplot.png"]
+    },
+    {
+      "id": "viz_06",
+      "query": "Generate a correlation heatmap between all samples using Spearman correlation on the normalized counts.",
+      "analysis_type": "visualization",
+      "data_info": "Normalized count matrix CSV",
+      "expected_outputs": ["correlation_heatmap.png"]
+    },
+    {
+      "id": "viz_07",
+      "query": "Create a dot plot showing average expression and percent of cells expressing genes CD3D, CD14, NKG7, MS4A1 across each cluster.",
+      "analysis_type": "visualization",
+      "data_info": "Processed h5ad with clusters",
+      "expected_outputs": ["dotplot.png"]
+    },
+    {
+      "id": "viz_08",
+      "query": "Generate a UMAP embedding and color cells by expression of gene EPCAM using a viridis colormap. Save as high-resolution PNG.",
+      "analysis_type": "visualization",
+      "data_info": "Processed h5ad",
+      "expected_outputs": ["umap_epcam.png"]
+    },
+    {
+      "id": "viz_09",
+      "query": "Create a multi-panel figure: top-left shows a volcano plot, top-right shows a heatmap of top 20 DE genes, bottom shows a PCA colored by condition.",
+      "analysis_type": "visualization",
+      "data_info": "DE results CSV + normalized counts CSV + metadata",
+      "expected_outputs": ["multi_panel.png"]
+    }
+  ]
+}
