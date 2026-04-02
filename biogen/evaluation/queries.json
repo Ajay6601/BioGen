@@ -1,0 +1,10 @@
+[
+  {
+    "query": "Run differential expression on treated vs control samples",
+    "expected": "differential_expression_results"
+  },
+  {
+    "query": "Perform PCA and UMAP on single-cell dataset",
+    "expected": "embedding_coordinates"
+  }
+]

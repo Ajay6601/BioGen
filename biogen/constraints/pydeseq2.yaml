@@ -1,0 +1,8 @@
+tool: pydeseq2
+parameters:
+  fit_type:
+    type: string
+    allowed: [parametric, mean]
+  min_replicates:
+    type: integer
+    min: 2

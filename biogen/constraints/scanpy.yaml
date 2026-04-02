@@ -1,0 +1,10 @@
+tool: scanpy
+parameters:
+  n_neighbors:
+    type: integer
+    min: 2
+    max: 200
+  min_dist:
+    type: float
+    min: 0.0
+    max: 1.0

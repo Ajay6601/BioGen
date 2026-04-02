@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Env
+.env
+venv/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Data (downloaded separately)
+data/*.h5ad
+data/*.csv
+data/*.tsv
+data/*.gz
+
+# Outputs
+outputs/
+*.png
+*.pdf
+sandbox_runs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
