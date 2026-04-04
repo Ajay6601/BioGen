@@ -55,6 +55,8 @@ def run_benchmark(data_path: str, max_queries: int | None = None) -> BenchmarkRe
             v = state.get("verification")
             if v:
                 score.ast_ok = v.ast_ok
+                score.api_ok = v.api_ok
+                score.order_ok = v.order_ok
                 score.deps_ok = v.deps_ok
                 score.params_ok = v.params_ok
                 score.execution_ok = v.execution_ok
