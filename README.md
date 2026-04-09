@@ -2,7 +2,7 @@
 
 **LLM-powered bioinformatics code generation with multi-stage execution verification.**
 
-Takes a natural language query from a biologist, generates a complete Python bioinformatics workflow, verifies it through four independent checks, and executes it in a sandbox — before the scientist ever sees it.
+Takes a natural language query from a biologist, generates a complete Python bioinformatics workflow, verifies it through four independent checks, and executes it in a sandbox  -  before the scientist ever sees it.
 
 Built as a proof-of-work project demonstrating the core **generate → verify → execute** loop for automated scientific computing.
 
@@ -23,9 +23,9 @@ Query → Plan → Code → Link → Verify → Execute
 
 Three agents orchestrated by LangGraph with conditional retry:
 
-- **Planner** — Decomposes natural language into ordered computational steps with tool assignments and data dependencies
-- **Coder** — Generates a Python function for each step using PyDESeq2, scanpy, matplotlib
-- **Linker** — Combines step functions into a single executable script with correct data flow
+- **Planner**  -  Decomposes natural language into ordered computational steps with tool assignments and data dependencies
+- **Coder**  -  Generates a Python function for each step using PyDESeq2, scanpy, matplotlib
+- **Linker**  -  Combines step functions into a single executable script with correct data flow
 
 ### Verification Pipeline (4 Checks)
 
@@ -104,10 +104,8 @@ biogen benchmark --data data/test_counts.csv --max-queries 5
 
 ## Project Structure
 
-Repository root (config + `app.py` live here; `biogen/` is the Python package):
-
 ```
-.
+biogen/
 ├── .env.example
 ├── .gitignore
 ├── README.md
@@ -125,28 +123,26 @@ Repository root (config + `app.py` live here; `biogen/` is the Python package):
 │   ├── generation/
 │   │   ├── __init__.py
 │   │   ├── orchestrator.py          # LangGraph: inspect→plan→code→link→verify→recover
-│   │   ├── data_inspector.py        # Schema, types, quality, recommendations from real files
-│   │   ├── planner.py               # NL query → ordered steps (data-aware prompts)
-│   │   ├── coder.py                 # Python per step (uses profile / step context)
-│   │   ├── linker.py                # Merges step functions into one executable script
-│   │   ├── error_recovery.py        # Classifies errors + deterministic / LLM repair
+│   │   ├── data_inspector.py        # Inspects actual data: schema, types, quality, recommendations
+│   │   ├── planner.py               # Decomposes NL query → ordered steps (data-aware)
+│   │   ├── coder.py                 # Generates Python code per step (uses real column names)
+│   │   ├── linker.py                # Validates data flow between steps
+│   │   ├── error_recovery.py        # Classifies errors + deterministic/LLM repair
 │   │   └── prompts.py               # All LLM prompt templates
 │   │
 │   ├── verification/
 │   │   ├── __init__.py
-│   │   ├── verifier.py              # Coordinator: AST → API → order → deps → params → sandbox
-│   │   ├── ast_checker.py           # Syntax, imports, main(), placeholders
-│   │   ├── api_validator.py         # Keyword args vs real scanpy / PyDESeq2 signatures
-│   │   ├── order_checker.py         # Scientific ordering (e.g. normalize before log1p)
-│   │   ├── dep_graph.py             # Step call order / data-flow heuristics
-│   │   ├── param_constraints.py     # YAML parameter rules
-│   │   └── sandbox.py               # Subprocess execution + timeout
+│   │   ├── verifier.py              # Verification coordinator
+│   │   ├── ast_checker.py           # AST parse, import resolution, signatures
+│   │   ├── dep_graph.py             # Step-to-step data dependency validation
+│   │   ├── param_constraints.py     # Parameter range/type constraint registry
+│   │   └── sandbox.py               # Sandboxed code execution
 │   │
 │   ├── evaluation/
 │   │   ├── __init__.py
 │   │   ├── benchmark.py             # Benchmark runner
-│   │   ├── scorer.py                # Per-query scores + summary table
-│   │   └── queries.json             # 25 benchmark queries + expected_outputs
+│   │   ├── scorer.py                # Execution pass rate, output correctness
+│   │   └── queries.json             # 25 benchmark queries + expected outputs
 │   │
 │   ├── constraints/
 │   │   ├── pydeseq2.yaml            # PyDESeq2 param constraints
@@ -154,8 +150,8 @@ Repository root (config + `app.py` live here; `biogen/` is the Python package):
 │   │
 │   └── utils/
 │       ├── __init__.py
-│       ├── llm_client.py            # OpenAI via langchain-openai (extensible to other providers)
-│       └── logger.py                # Rich logging
+│       ├── llm_client.py            # OpenAI/Anthropic API wrapper
+│       └── logger.py                # Structured logging
 │
 ├── tests/
 │   ├── __init__.py
@@ -169,13 +165,13 @@ Repository root (config + `app.py` live here; `biogen/` is the Python package):
 
 ## Tech Stack
 
-- **LangGraph** — Agent orchestration with conditional retry
-- **PyDESeq2** — Bulk RNA-seq differential expression (pure Python)
-- **scanpy** — Single-cell RNA-seq analysis (QC → clustering → UMAP)
-- **Python AST** — Code parsing and structural validation
-- **YAML constraint registry** — Extensible parameter validation
-- **FastAPI** — API endpoint (optional)
-- **Rich** — CLI output formatting
+- **LangGraph**  -  Agent orchestration with conditional retry
+- **PyDESeq2**  -  Bulk RNA-seq differential expression (pure Python)
+- **scanpy**  -  Single-cell RNA-seq analysis (QC → clustering → UMAP)
+- **Python AST**  -  Code parsing and structural validation
+- **YAML constraint registry**  -  Extensible parameter validation
+- **FastAPI**  -  API endpoint (optional)
+- **Rich**  -  CLI output formatting
 
 ## What This Demonstrates
 
@@ -185,6 +181,6 @@ This project mirrors the core architecture of LLM-powered scientific computing p
 
 The planner decomposes ambiguous biology queries into concrete computational steps. The coder produces real bioinformatics code against production libraries. The multi-stage verifier (AST, API signatures, operation order, dependencies, parameters, sandbox) catches common LLM failure modes. The benchmark quantifies where the system succeeds and fails.
 
-The verification pipeline is the differentiator — most systems stop at "does it parse." This one checks syntax, library call signatures, pipeline ordering, data flow, parameter ranges, and sandboxed execution before accepting a result.
+The verification pipeline is the differentiator  -  most systems stop at "does it parse." This one checks syntax, library call signatures, pipeline ordering, data flow, parameter ranges, and sandboxed execution before accepting a result.
 
 Built by [Ajay Sai Reddy Desireddy](https://github.com/ajaysai) as a proof-of-work project for LLM-powered bioinformatics automation.
