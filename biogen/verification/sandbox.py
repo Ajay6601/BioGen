@@ -1,7 +1,12 @@
-import os
+###############################################################################
+# FILE: biogen/verification/sandbox.py
+###############################################################################
 import subprocess
-
-from biogen.config import SANDBOX_DIR, SANDBOX_TIMEOUT
+import tempfile
+import os
+import sys
+from pathlib import Path
+from biogen.config import SANDBOX_TIMEOUT, SANDBOX_DIR
 from biogen.utils.logger import get_logger
 
 log = get_logger("biogen.sandbox")
@@ -11,11 +16,12 @@ def execute_in_sandbox(
     script: str,
     data_path: str,
     output_dir: str,
+    metadata_path: str = "",
 ) -> tuple[bool, str]:
-    """Execute the generated script in a subprocess sandbox.
+    """Execute the generated script in a subprocess sandbox."""
+    abs_data_path = str(Path(data_path).resolve())
 
-    Returns (success: bool, output: str).
-    """
+    # Write script to temp file
     run_dir = SANDBOX_DIR / f"run_{os.getpid()}"
     run_dir.mkdir(parents=True, exist_ok=True)
 
@@ -23,27 +29,32 @@ def execute_in_sandbox(
     out_dir = run_dir / "output"
     out_dir.mkdir(exist_ok=True)
 
+    # Inject data_path and output_dir into the script's main call
+    # Replace argparse with direct values for sandbox
     patched = script
     if "argparse" in script:
-        patched += "\n\n# --- Sandbox injection ---\n"
-        patched += 'if __name__ == "__main__":\n'
-        patched += f'    main("{data_path}", "{str(out_dir)}")\n'
-    elif "if __name__" in script:
-        patched = patched.replace("sys.argv[1]", f'"{data_path}"')
-        patched = patched.replace("sys.argv[2]", f'"{str(out_dir)}"')
+        # Add a direct invocation at the bottom
+        patched += f'\n\n# --- Sandbox injection ---\n'
+        patched += f'if __name__ == "__main__":\n'
+        patched += f"    main({repr(abs_data_path)}, {repr(str(out_dir))})\n"
+    elif 'if __name__' in script:
+        # Replace sys.argv references
+        patched = patched.replace("sys.argv[1]", repr(abs_data_path))
+        patched = patched.replace("sys.argv[2]", repr(str(out_dir)))
 
+    patched = patched.replace("\r\n", "\n")
     script_path.write_text(patched, encoding="utf-8")
     log.info(f"  Sandbox script: {script_path}")
-    log.info(f"  Data path: {data_path}")
+    log.info(f"  Data path: {abs_data_path}")
 
     try:
         result = subprocess.run(
-            ["python", str(script_path)],
+            [sys.executable, str(script_path)],
             capture_output=True,
             text=True,
             timeout=SANDBOX_TIMEOUT,
             cwd=str(run_dir),
-            env={**os.environ, "MPLBACKEND": "Agg"},
+            env={**os.environ, "MPLBACKEND": "Agg"},  # Non-interactive matplotlib
         )
 
         stdout = result.stdout.strip()
@@ -53,6 +64,7 @@ def execute_in_sandbox(
         if result.returncode != 0:
             log.warning(f"  Sandbox failed (exit {result.returncode})")
             error_lines = stderr.splitlines()
+            # Get last meaningful error
             actual_error = ""
             for line in reversed(error_lines):
                 if line.strip() and not line.startswith("Traceback"):
@@ -71,6 +83,6 @@ def execute_in_sandbox(
     except subprocess.TimeoutExpired:
         log.warning(f"  Sandbox timed out ({SANDBOX_TIMEOUT}s)")
         return False, f"Execution timed out after {SANDBOX_TIMEOUT}s"
-    except OSError as e:
+    except Exception as e:
         log.error(f"  Sandbox error: {e}")
         return False, str(e)

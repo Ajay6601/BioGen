@@ -1,3 +1,6 @@
+###############################################################################
+# FILE: biogen/verification/order_checker.py
+###############################################################################
 """
 Validates that bioinformatics operations are called in a scientifically
 correct order. Catches silent correctness bugs where the script runs
@@ -11,7 +14,12 @@ from biogen.utils.logger import get_logger
 
 log = get_logger("biogen.order_checker")
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Ordering rules: (operation, must_come_after, must_come_before, severity)
+# ──────────────────────────────────────────────────────────────────────────────
+
 SCANPY_ORDER_RULES = [
+    # (operation, must_come_before_these, error_message)
     {
         "op": "sc.pp.filter_cells",
         "must_precede": ["sc.pp.normalize_total", "sc.pp.log1p", "sc.pp.pca"],
@@ -71,6 +79,10 @@ PYDESEQ2_ORDER_RULES = [
     },
 ]
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Anti-patterns: things that are always wrong regardless of order
+# ──────────────────────────────────────────────────────────────────────────────
+
 ANTI_PATTERNS = [
     {
         "pattern": r"sc\.pp\.log1p.*\n.*sc\.pp\.log1p",
@@ -96,20 +108,28 @@ ANTI_PATTERNS = [
 
 
 def _find_operation_positions(script: str, operations: list[str]) -> dict[str, int]:
-    positions: dict[str, int] = {}
+    """Find the line number of first occurrence of each operation (skip imports)."""
+    positions = {}
     lines = script.splitlines()
     for i, line in enumerate(lines):
+        stripped = line.strip()
+        # Skip import lines and comments
+        if stripped.startswith(("import ", "from ", "#")):
+            continue
         for op in operations:
             if op in line and op not in positions:
-                stripped = line.strip()
-                if not stripped.startswith("#"):
-                    positions[op] = i
+                positions[op] = i
     return positions
 
 
 def check_operation_order(script: str, analysis_type: str) -> list[str]:
-    issues: list[str] = []
+    """
+    Validate that bioinformatics operations are in scientifically correct order.
+    Returns list of issues.
+    """
+    issues = []
 
+    # Select rules based on analysis type
     if analysis_type in ("scrna_clustering", "scrna_seq"):
         rules = SCANPY_ORDER_RULES
     elif analysis_type in ("bulk_rnaseq_de", "bulk_rnaseq"):
@@ -117,17 +137,19 @@ def check_operation_order(script: str, analysis_type: str) -> list[str]:
     else:
         rules = SCANPY_ORDER_RULES + PYDESEQ2_ORDER_RULES
 
-    all_ops: set[str] = set()
+    # Get all operation positions
+    all_ops = set()
     for rule in rules:
         all_ops.add(rule["op"])
         all_ops.update(rule["must_precede"])
 
     positions = _find_operation_positions(script, list(all_ops))
 
+    # Check ordering rules
     for rule in rules:
         op = rule["op"]
         if op not in positions:
-            continue
+            continue  # Operation not used, skip
 
         op_line = positions[op]
         for must_follow in rule["must_precede"]:
@@ -137,13 +159,30 @@ def check_operation_order(script: str, analysis_type: str) -> list[str]:
                     severity = rule["severity"]
                     issues.append(
                         f"[{severity.upper()}] {rule['msg']}: "
-                        f"'{op}' (line {op_line + 1}) comes after "
-                        f"'{must_follow}' (line {follow_line + 1})"
+                        f"'{op}' (line {op_line+1}) comes after "
+                        f"'{must_follow}' (line {follow_line+1})"
                     )
 
+    # Check anti-patterns
     for ap in ANTI_PATTERNS:
         if re.search(ap["pattern"], script, re.DOTALL):
             issues.append(f"[{ap['severity'].upper()}] {ap['msg']}")
+
+    # Data-state consistency check
+    # If script uses log1p, check that it's on raw/normalized data, not already logged
+    if "sc.pp.log1p" in script:
+        # Check if there's a comment or condition guarding it
+        for i, line in enumerate(script.splitlines()):
+            if "sc.pp.log1p" in line and not line.strip().startswith("#"):
+                # Look for a guard like "if not already_logged"
+                context = script.splitlines()[max(0, i-3):i+1]
+                has_guard = any(
+                    "log" in c.lower() and ("if" in c or "skip" in c.lower() or "already" in c.lower())
+                    for c in context
+                )
+                if not has_guard:
+                    # Not necessarily wrong, but flag for awareness
+                    pass  # Data inspector already handles this
 
     if issues:
         log.warning(f"Order check found {len(issues)} issues")

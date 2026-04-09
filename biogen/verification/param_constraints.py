@@ -1,24 +1,27 @@
+###############################################################################
+# FILE: biogen/verification/param_constraints.py
+###############################################################################
 import ast
 import re
 from pathlib import Path
-
 import yaml
-
 from biogen.config import CONSTRAINTS_DIR
 from biogen.utils.logger import get_logger
 
 log = get_logger("biogen.params")
 
+# Cache loaded constraints
 _constraints_cache: dict[str, dict] = {}
 
 
 def _load_constraints(analysis_type: str) -> dict:
+    """Load parameter constraints from YAML files."""
     if analysis_type in _constraints_cache:
         return _constraints_cache[analysis_type]
 
     constraints = {}
     for yaml_file in CONSTRAINTS_DIR.glob("*.yaml"):
-        with open(yaml_file, encoding="utf-8") as f:
+        with open(yaml_file) as f:
             data = yaml.safe_load(f) or {}
             constraints.update(data)
 
@@ -27,6 +30,7 @@ def _load_constraints(analysis_type: str) -> dict:
 
 
 def check_params(script: str, analysis_type: str) -> list[str]:
+    """Validate parameters in generated code against known constraints."""
     issues = []
     constraints = _load_constraints(analysis_type)
 
@@ -35,24 +39,24 @@ def check_params(script: str, analysis_type: str) -> list[str]:
         return issues
 
     for func_pattern, rules in constraints.items():
+        # Check if this function is used in the script
         if func_pattern not in script:
             continue
 
-        if not isinstance(rules, dict):
-            continue
         param_rules = rules.get("params", {})
         for param_name, rule in param_rules.items():
-            if not isinstance(rule, dict):
-                continue
+            # Search for param_name=value patterns near the function call
             pattern = rf"{param_name}\s*=\s*([^\s,\)]+)"
             matches = re.findall(pattern, script)
 
             for match in matches:
+                # Try to evaluate the value
                 try:
                     val = ast.literal_eval(match)
                 except (ValueError, SyntaxError):
                     continue
 
+                # Check type
                 expected_type = rule.get("type")
                 if expected_type == "int" and not isinstance(val, int):
                     issues.append(
@@ -63,6 +67,7 @@ def check_params(script: str, analysis_type: str) -> list[str]:
                         f"{func_pattern}: {param_name} should be float, got {type(val).__name__}"
                     )
 
+                # Check range
                 min_val = rule.get("min")
                 max_val = rule.get("max")
                 if isinstance(val, (int, float)):
@@ -75,16 +80,13 @@ def check_params(script: str, analysis_type: str) -> list[str]:
                             f"{func_pattern}: {param_name}={val} above max={max_val}"
                         )
 
+                # Check allowed values
                 allowed = rule.get("allowed")
                 if allowed and val not in allowed:
+                    # Only flag if val is a string (enum-like)
                     if isinstance(val, str):
                         issues.append(
                             f"{func_pattern}: {param_name}='{val}' not in {allowed}"
                         )
 
     return issues
-
-
-def load_constraint_file(path: Path) -> dict:
-    with path.open("r", encoding="utf-8") as f:
-        return yaml.safe_load(f) or {}

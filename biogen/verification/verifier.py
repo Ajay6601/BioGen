@@ -1,11 +1,13 @@
+###############################################################################
+# FILE: biogen/verification/verifier.py
+###############################################################################
 from dataclasses import dataclass, field
-
 from biogen.generation.planner import WorkflowPlan
-from biogen.verification.api_validator import validate_api_calls
 from biogen.verification.ast_checker import check_ast
 from biogen.verification.dep_graph import check_dependencies
-from biogen.verification.order_checker import check_operation_order
 from biogen.verification.param_constraints import check_params
+from biogen.verification.api_validator import validate_api_calls
+from biogen.verification.order_checker import check_operation_order
 from biogen.verification.sandbox import execute_in_sandbox
 from biogen.utils.logger import get_logger
 
@@ -24,7 +26,7 @@ class VerificationResult:
     execution_ok: bool = False
     execution_output: str = ""
 
-    def fail(self, msg: str) -> None:
+    def fail(self, msg: str):
         self.passed = False
         self.issues.append(msg)
 
@@ -38,6 +40,7 @@ def verify_script(
     """Run all 6 verification checks on a generated script."""
     result = VerificationResult()
 
+    # 1. AST check — syntax, imports, structure
     log.info("  Check 1/6: AST validation...")
     ast_issues = check_ast(script)
     if ast_issues:
@@ -45,8 +48,9 @@ def verify_script(
             result.fail(f"[AST] {issue}")
     else:
         result.ast_ok = True
-        log.info("    ? AST valid")
+        log.info("    ✓ AST valid")
 
+    # 2. API hallucination check — real signatures vs generated calls
     log.info("  Check 2/6: API signature validation...")
     api_issues = validate_api_calls(script)
     if api_issues:
@@ -54,10 +58,12 @@ def verify_script(
             result.fail(f"[API] {issue}")
     else:
         result.api_ok = True
-        log.info("    ? API signatures valid")
+        log.info("    ✓ API signatures valid")
 
+    # 3. Operation order — scientifically correct sequence
     log.info("  Check 3/6: Operation order...")
     order_issues = check_operation_order(script, plan.analysis_type)
+    # Only block on errors, not warnings
     errors = [i for i in order_issues if "[ERROR]" in i]
     warnings = [i for i in order_issues if "[WARNING]" in i]
     if errors:
@@ -67,9 +73,10 @@ def verify_script(
         result.order_ok = True
         if warnings:
             for w in warnings:
-                log.warning(f"    ? {w}")
-        log.info("    ? Operation order valid")
+                log.warning(f"    ⚠ {w}")
+        log.info("    ✓ Operation order valid")
 
+    # 4. Dependency graph — data flow between steps
     log.info("  Check 4/6: Dependency graph...")
     dep_issues = check_dependencies(script, plan)
     if dep_issues:
@@ -77,8 +84,9 @@ def verify_script(
             result.fail(f"[DEP] {issue}")
     else:
         result.deps_ok = True
-        log.info("    ? Dependencies valid")
+        log.info("    ✓ Dependencies valid")
 
+    # 5. Parameter constraints — value ranges, types
     log.info("  Check 5/6: Parameter constraints...")
     param_issues = check_params(script, plan.analysis_type)
     if param_issues:
@@ -86,8 +94,9 @@ def verify_script(
             result.fail(f"[PARAM] {issue}")
     else:
         result.params_ok = True
-        log.info("    ? Parameters valid")
+        log.info("    ✓ Parameters valid")
 
+    # 6. Sandbox execution (only if static checks pass)
     if result.ast_ok and result.api_ok:
         log.info("  Check 6/6: Sandbox execution...")
         exec_ok, exec_output = execute_in_sandbox(script, data_path, output_dir)
@@ -96,17 +105,13 @@ def verify_script(
             result.fail(f"[EXEC] {exec_output[:500]}")
         else:
             result.execution_ok = True
-            log.info("    ? Execution successful")
+            log.info("    ✓ Execution successful")
     else:
         log.warning("  Skipping sandbox (static checks failed)")
-        result.fail("[EXEC] Skipped; fix static errors first")
+        result.fail("[EXEC] Skipped — fix static errors first")
 
     result.passed = all([
-        result.ast_ok,
-        result.api_ok,
-        result.order_ok,
-        result.deps_ok,
-        result.params_ok,
-        result.execution_ok,
+        result.ast_ok, result.api_ok, result.order_ok,
+        result.deps_ok, result.params_ok, result.execution_ok,
     ])
     return result
