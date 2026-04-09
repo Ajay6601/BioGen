@@ -2,7 +2,7 @@
 import json
 from unittest.mock import patch
 
-from biogen.generation.planner import WorkflowPlan, WorkflowStep, plan_workflow
+from biogen.generation.planner import WorkflowPlan, plan_workflow
 
 MOCK_PLAN_RESPONSE = json.dumps({
     "steps": [
