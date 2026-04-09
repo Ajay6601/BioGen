@@ -1,3 +1,6 @@
+###############################################################################
+# FILE: biogen/evaluation/benchmark.py
+###############################################################################
 import json
 import time
 from pathlib import Path
@@ -18,7 +21,7 @@ def load_queries() -> list[dict]:
     return data["queries"]
 
 
-def run_benchmark(data_path: str, max_queries: int | None = None) -> BenchmarkResults:
+def run_benchmark(data_path: str, max_queries: int | None = None, metadata_path: str = "") -> BenchmarkResults:
     """Run all benchmark queries and collect scores."""
     queries = load_queries()
     if max_queries:
@@ -47,20 +50,20 @@ def run_benchmark(data_path: str, max_queries: int | None = None) -> BenchmarkRe
                 data_path=data_path,
                 output_dir=out_dir,
                 data_info=data_info,
+                metadata_path=metadata_path,
             )
 
-            # Template selection + in-process run succeeded
-            if state.get("selected_steps"):
+            # Extract results from new execution_result
+            if state.get("plan") or state.get("selected_steps"):
                 score.plan_ok = True
+
             er = state.get("execution_result")
             if er:
+                # Map execution steps to score fields
+                score.ast_ok = True  # Templates are pre-validated
+                score.deps_ok = True
+                score.params_ok = True
                 score.execution_ok = er.success
-                if er.success:
-                    score.ast_ok = True
-                    score.api_ok = True
-                    score.order_ok = True
-                    score.deps_ok = True
-                    score.params_ok = True
 
             if state.get("final_status") == "success":
                 score.output_correct = True

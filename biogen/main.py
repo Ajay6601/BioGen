@@ -17,7 +17,9 @@ from rich.panel import Panel
 from rich.table import Table
 
 from biogen.config import OUTPUT_DIR
+from biogen.utils.logger import get_logger
 
+log = get_logger("biogen")
 console = Console()
 
 
@@ -86,6 +88,7 @@ def cmd_benchmark(args):
     results = run_benchmark(
         data_path=args.data,
         max_queries=args.max_queries,
+        metadata_path=getattr(args, 'metadata', ''),
     )
 
     # Rich table output
@@ -132,6 +135,7 @@ def cli():
     # benchmark
     bench = sub.add_parser("benchmark", help="Run the evaluation benchmark")
     bench.add_argument("--data", "-d", required=True, help="Path to test data")
+    bench.add_argument("--metadata", "-m", default="", help="Path to metadata CSV")
     bench.add_argument("--max-queries", "-n", type=int, help="Max queries to run")
     bench.add_argument("--output", "-o", default=str(OUTPUT_DIR), help="Output directory")
 

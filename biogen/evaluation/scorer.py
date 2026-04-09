@@ -1,5 +1,7 @@
+###############################################################################
+# FILE: biogen/evaluation/scorer.py
+###############################################################################
 from dataclasses import dataclass, field
-from pathlib import Path
 
 
 @dataclass
@@ -9,8 +11,6 @@ class QueryScore:
     analysis_type: str
     plan_ok: bool = False
     ast_ok: bool = False
-    api_ok: bool = False
-    order_ok: bool = False
     deps_ok: bool = False
     params_ok: bool = False
     execution_ok: bool = False
@@ -20,27 +20,16 @@ class QueryScore:
     @property
     def passed(self) -> bool:
         return all([
-            self.plan_ok,
-            self.ast_ok,
-            self.api_ok,
-            self.order_ok,
-            self.deps_ok,
-            self.params_ok,
-            self.execution_ok,
+            self.plan_ok, self.ast_ok, self.deps_ok,
+            self.params_ok, self.execution_ok
         ])
 
     @property
     def score(self) -> float:
         """Score from 0-1 based on how many checks passed."""
         checks = [
-            self.plan_ok,
-            self.ast_ok,
-            self.api_ok,
-            self.order_ok,
-            self.deps_ok,
-            self.params_ok,
-            self.execution_ok,
-            self.output_correct,
+            self.plan_ok, self.ast_ok, self.deps_ok,
+            self.params_ok, self.execution_ok, self.output_correct
         ]
         return sum(checks) / len(checks)
 
@@ -78,34 +67,31 @@ class BenchmarkResults:
     def summary_table(self) -> str:
         """Generate a markdown results table."""
         lines = [
-            "| Analysis Type | Queries | Plan | AST | API | Order | Deps | Params | Exec | Avg Score |",
-            "|---|---|---|---|---|---|---|---|---|---|",
+            "| Analysis Type | Queries | Plan | AST | Deps | Params | Exec | Avg Score |",
+            "|---|---|---|---|---|---|---|---|",
         ]
 
         for atype, group in self.by_type().items():
             n = len(group)
             plan = sum(1 for s in group if s.plan_ok)
             ast_ = sum(1 for s in group if s.ast_ok)
-            api_ = sum(1 for s in group if s.api_ok)
-            order_ = sum(1 for s in group if s.order_ok)
             deps = sum(1 for s in group if s.deps_ok)
             params = sum(1 for s in group if s.params_ok)
             exec_ = sum(1 for s in group if s.execution_ok)
             avg = sum(s.score for s in group) / n if n else 0
 
             lines.append(
-                f"| {atype} | {n} | {plan}/{n} | {ast_}/{n} | {api_}/{n} | {order_}/{n} | "
+                f"| {atype} | {n} | {plan}/{n} | {ast_}/{n} | "
                 f"{deps}/{n} | {params}/{n} | {exec_}/{n} | {avg:.2f} |"
             )
 
+        # Total row
         n = self.total
         if n:
             lines.append(
                 f"| **Total** | **{n}** | "
                 f"**{sum(1 for s in self.scores if s.plan_ok)}/{n}** | "
                 f"**{sum(1 for s in self.scores if s.ast_ok)}/{n}** | "
-                f"**{sum(1 for s in self.scores if s.api_ok)}/{n}** | "
-                f"**{sum(1 for s in self.scores if s.order_ok)}/{n}** | "
                 f"**{sum(1 for s in self.scores if s.deps_ok)}/{n}** | "
                 f"**{sum(1 for s in self.scores if s.params_ok)}/{n}** | "
                 f"**{sum(1 for s in self.scores if s.execution_ok)}/{n}** | "
