@@ -1,3 +1,6 @@
+###############################################################################
+# FILE: biogen/generation/data_inspector.py
+###############################################################################
 """
 Inspects uploaded data BEFORE planning — extracts schema, stats, quality
 issues, and infers experiment type. This is what makes the pipeline
@@ -50,7 +53,7 @@ class DataProfile:
     def to_prompt_context(self) -> str:
         """Format as context string for LLM prompts — this is the key output."""
         lines = [
-            "DATA PROFILE (auto-inspected from uploaded file):",
+            f"DATA PROFILE (auto-inspected from uploaded file):",
             f"  File type: {self.file_type}",
             f"  Shape: {self.n_genes} genes × {self.n_samples} samples",
             f"  Sample names: {self.sample_names[:10]}{'...' if len(self.sample_names) > 10 else ''}",
@@ -84,6 +87,7 @@ class DataProfile:
 
 def _detect_condition_column(meta_df: pd.DataFrame) -> tuple[str | None, list[str]]:
     """Auto-detect which column represents experimental conditions."""
+    # Priority: known names first
     known_names = [
         "condition", "group", "treatment", "genotype", "phenotype",
         "status", "disease", "type", "class", "label", "sample_type",
@@ -96,6 +100,7 @@ def _detect_condition_column(meta_df: pd.DataFrame) -> tuple[str | None, list[st
             if 2 <= len(vals) <= 20:
                 return col, [str(v) for v in vals]
 
+    # Fallback: find any categorical column with 2-10 unique values
     for col in meta_df.columns:
         if col.lower() in ("sample", "sample_id", "id", "name", "barcode"):
             continue
@@ -118,13 +123,14 @@ def _infer_data_type(values: np.ndarray) -> str:
 
     if is_integer and max_val > 100:
         return "raw_counts"
-    if not is_integer and max_val < 30:
+    elif not is_integer and max_val < 30:
         return "log_transformed"
-    if not is_integer and median_val > 1 and max_val > 100:
+    elif not is_integer and median_val > 1 and max_val > 100:
         return "tpm_or_fpkm"
-    if is_integer:
+    elif is_integer:
         return "raw_counts"
-    return "normalized"
+    else:
+        return "normalized"
 
 
 def inspect_csv(
@@ -135,9 +141,11 @@ def inspect_csv(
     profile = DataProfile()
     path = Path(data_path)
 
+    # Detect separator
     sep = "\t" if path.suffix in (".tsv", ".tab") else ","
     profile.file_type = "tsv" if sep == "\t" else "csv"
 
+    # Load data
     df = pd.read_csv(path, sep=sep, index_col=0)
     profile.n_genes = df.shape[0]
     profile.n_samples = df.shape[1]
@@ -145,6 +153,7 @@ def inspect_csv(
     profile.column_names = df.columns.tolist()
     profile.gene_id_column = df.index.name or "index"
 
+    # Numeric analysis
     numeric = df.select_dtypes(include=[np.number])
     if numeric.empty:
         profile.quality_warnings.append("No numeric columns found in data")
@@ -163,14 +172,17 @@ def inspect_csv(
     gene_vars = np.nanvar(values, axis=1)
     profile.constant_genes = int(np.sum(gene_vars == 0))
 
+    # Infer data type
     profile.inferred_data_type = _infer_data_type(values)
     profile.dtype = "int" if np.allclose(values, np.round(values), equal_nan=True) else "float"
 
+    # Infer experiment type
     if profile.n_samples > 50 and profile.zero_fraction > 0.7:
         profile.inferred_experiment = "scrna_seq"
     else:
         profile.inferred_experiment = "bulk_rnaseq"
 
+    # Load metadata
     if metadata_path and Path(metadata_path).exists():
         meta_sep = "\t" if Path(metadata_path).suffix in (".tsv", ".tab") else ","
         meta_df = pd.read_csv(metadata_path, sep=meta_sep)
@@ -185,6 +197,7 @@ def inspect_csv(
                 meta_df[cond_col].value_counts().to_dict()
             )
 
+    # Quality warnings
     if profile.low_count_genes > profile.n_genes * 0.5:
         profile.quality_warnings.append(
             f"{profile.low_count_genes}/{profile.n_genes} genes have very low counts "
@@ -244,6 +257,14 @@ def inspect_csv(
             "Try to parse condition from sample names (e.g. 'treated_1' → condition='treated')"
         )
 
+    # PyDESeq2 orientation warning
+    if profile.inferred_experiment == "bulk_rnaseq" and profile.n_genes > profile.n_samples:
+        profile.recommendations.append(
+            "CRITICAL: This CSV has genes as rows and samples as columns. "
+            "PyDESeq2 requires samples as rows and genes as columns. "
+            "Transpose the DataFrame with .T after loading: counts_df = pd.read_csv(path, index_col=0).T"
+        )
+
     log.info(f"Inspected {path.name}: {profile.n_genes} genes × {profile.n_samples} samples")
     log.info(f"  Type: {profile.inferred_data_type} | Experiment: {profile.inferred_experiment}")
     if profile.quality_warnings:
@@ -267,6 +288,7 @@ def inspect_h5ad(data_path: str) -> DataProfile:
     profile.sample_names = adata.obs_names.tolist()[:20]
     profile.column_names = adata.var_names.tolist()[:20]
 
+    # Check obs columns for metadata
     if len(adata.obs.columns) > 0:
         profile.has_metadata = True
         profile.metadata_columns = adata.obs.columns.tolist()
@@ -279,14 +301,15 @@ def inspect_h5ad(data_path: str) -> DataProfile:
                 adata.obs[cond_col].value_counts().to_dict()
             )
 
+    # Numeric analysis on .X
     X = adata.X
     if scipy.sparse.issparse(X):
         X = X.toarray()
-    values = np.asarray(X, dtype=float)
+    values = np.array(X, dtype=float)
 
     profile.has_negative_values = bool(np.any(values < 0))
     profile.zero_fraction = float(np.mean(values == 0))
-    totals = np.nansum(values, axis=1)
+    totals = np.nansum(values, axis=1)  # per cell
     profile.median_total_counts = float(np.median(totals))
     profile.min_total_counts = float(np.min(totals))
     profile.max_total_counts = float(np.max(totals))
@@ -299,6 +322,7 @@ def inspect_h5ad(data_path: str) -> DataProfile:
     profile.inferred_data_type = _infer_data_type(values)
     profile.dtype = "int" if np.allclose(values, np.round(values), equal_nan=True) else "float"
 
+    # scRNA-seq detection
     if profile.n_samples > 100 and profile.zero_fraction > 0.5:
         profile.inferred_experiment = "scrna_seq"
     elif profile.n_samples > 50:
@@ -306,6 +330,7 @@ def inspect_h5ad(data_path: str) -> DataProfile:
     else:
         profile.inferred_experiment = "bulk_rnaseq"
 
+    # Mitochondrial gene detection
     mito_genes = [g for g in adata.var_names if str(g).startswith(("MT-", "mt-"))]
     if mito_genes and profile.inferred_experiment == "scrna_seq":
         profile.recommendations.append(
@@ -313,6 +338,7 @@ def inspect_h5ad(data_path: str) -> DataProfile:
             f"Calculate percent_mito and filter cells with high mitochondrial content."
         )
 
+    # QC warnings
     if profile.zero_fraction > 0.9:
         profile.quality_warnings.append(
             f"Extreme sparsity ({profile.zero_fraction:.1%} zeros). "
@@ -332,9 +358,7 @@ def inspect_h5ad(data_path: str) -> DataProfile:
             "Data is raw counts. Apply sc.pp.normalize_total() then sc.pp.log1p()"
         )
 
-    log.info(
-        f"Inspected {Path(data_path).name}: {profile.n_genes} genes × {profile.n_samples} cells"
-    )
+    log.info(f"Inspected {Path(data_path).name}: {profile.n_genes} genes × {profile.n_samples} cells")
     return profile
 
 
@@ -344,7 +368,8 @@ def inspect_data(data_path: str, metadata_path: str | None = None) -> DataProfil
 
     if path.suffix == ".h5ad":
         return inspect_h5ad(data_path)
-    if path.suffix in (".csv", ".tsv", ".tab", ".txt"):
+    elif path.suffix in (".csv", ".tsv", ".tab", ".txt"):
         return inspect_csv(data_path, metadata_path)
-    log.warning(f"Unknown file type: {path.suffix}, trying CSV")
-    return inspect_csv(data_path, metadata_path)
+    else:
+        log.warning(f"Unknown file type: {path.suffix}, trying CSV")
+        return inspect_csv(data_path, metadata_path)

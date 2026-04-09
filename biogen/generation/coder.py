@@ -1,7 +1,11 @@
+###############################################################################
+# FILE: biogen/generation/coder.py
+###############################################################################
 import re
 from biogen.generation.planner import WorkflowPlan, WorkflowStep
 from biogen.utils.llm_client import call_llm
 from biogen.generation.prompts import CODER_SYSTEM, CODER_USER
+from biogen.verification.api_introspect import get_api_reference
 from biogen.utils.logger import get_logger
 
 log = get_logger("biogen.coder")
@@ -11,7 +15,6 @@ def _strip_fences(code: str) -> str:
     """Remove markdown code fences if present."""
     code = code.strip()
     if code.startswith("```"):
-        # Remove opening fence (```python or ```)
         code = re.sub(r"^```\w*\n?", "", code)
     if code.endswith("```"):
         code = code[:-3]
@@ -35,15 +38,15 @@ def generate_step_code(step: WorkflowStep, plan: WorkflowPlan) -> str:
     log.info(f"Generating code for step {step.step_id}: {step.name}")
 
     prev = _build_prev_outputs(plan, step.step_id)
-    system = CODER_SYSTEM.format(prev_outputs=prev)
-    user = CODER_USER.format(
-        step_id=step.step_id,
-        name=step.name,
-        description=step.description,
-        tool=step.tool,
-        inputs=step.inputs,
-        output_type=step.output_type,
-    )
+    api_ref = get_api_reference(plan.analysis_type)
+
+    system = CODER_SYSTEM.replace("PREV_OUTPUTS", prev).replace("API_REFERENCE", api_ref)
+    user = CODER_USER.replace("{step_id}", str(step.step_id)) \
+                      .replace("{name}", step.name) \
+                      .replace("{description}", step.description) \
+                      .replace("{tool}", step.tool) \
+                      .replace("{inputs}", str(step.inputs)) \
+                      .replace("{output_type}", step.output_type)
 
     raw = call_llm(system, user)
     code = _strip_fences(raw)

@@ -1,3 +1,6 @@
+###############################################################################
+# FILE: biogen/generation/linker.py
+###############################################################################
 import re
 from biogen.generation.planner import WorkflowPlan
 from biogen.utils.llm_client import call_llm
@@ -31,7 +34,7 @@ def link_steps(plan: WorkflowPlan, step_codes: dict[int, str]) -> str:
         )
     step_functions = "\n\n".join(blocks)
 
-    user = LINKER_USER.format(step_functions=step_functions)
+    user = LINKER_USER.replace("STEP_FUNCTIONS", step_functions)
     raw = call_llm(LINKER_SYSTEM, user)
     script = _strip_fences(raw)
 

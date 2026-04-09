@@ -40,7 +40,7 @@ def plan_workflow(query: str, data_info: str = "count matrix CSV") -> WorkflowPl
     """Decompose a natural language query into ordered workflow steps."""
     log.info(f"Planning workflow for: {query[:80]}...")
 
-    user_msg = PLANNER_USER.format(query=query, data_info=data_info)
+    user_msg = PLANNER_USER.replace("{query}", query).replace("{data_info}", data_info)
     raw = call_llm_json(PLANNER_SYSTEM, user_msg)
 
     try:
