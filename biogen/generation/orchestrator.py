@@ -1,210 +1,118 @@
+###############################################################################
+# FILE: biogen/generation/orchestrator.py
+###############################################################################
 """
-LangGraph orchestration: inspect → plan → code → link → verify → recover → decide
+LangGraph orchestration: inspect → select templates → assemble → execute → done
 
-Key difference from a naive pipeline:
-  1. Data inspection runs FIRST — the planner/coder see actual column names,
-     data types, quality issues, and recommendations.
-  2. Error recovery classifies failures and patches the script with awareness
-     of both the traceback AND the data profile.
-  3. Retry loop feeds error context back, not just "try again."
+Key architecture decision:
+  The LLM NEVER writes code. It selects from pre-validated templates and
+  fills parameters. The assembler stitches them into a script.
+  In-process execution (`execute_pipeline`) validates the workflow end-to-end.
 """
-from typing import TypedDict, cast
+from typing import TypedDict
 
-from langgraph.graph import END, StateGraph
+from langgraph.graph import StateGraph, END
 
-from biogen.generation.coder import generate_all_steps
-from biogen.generation.data_inspector import DataProfile, inspect_data
-from biogen.generation.error_recovery import classify_error, repair_script
-from biogen.generation.linker import link_steps
-from biogen.generation.planner import WorkflowPlan, plan_workflow
+from biogen.generation.data_inspector import inspect_data, DataProfile
+from biogen.generation.assembler import select_templates, assemble_script
+from biogen.execution.executor import execute_pipeline, PipelineResult
 from biogen.utils.logger import get_logger
-from biogen.verification.verifier import VerificationResult, verify_script
 
 log = get_logger("biogen.orchestrator")
-
-# ---------------------------------------------------------------------------
-# State
-# ---------------------------------------------------------------------------
 
 
 class PipelineState(TypedDict):
     query: str
     data_path: str
     metadata_path: str
-    data_info: str
     output_dir: str
     data_profile: DataProfile | None
-    plan: WorkflowPlan | None
-    step_codes: dict[int, str] | None
+    selected_steps: list[dict] | None
     script: str | None
-    verification: VerificationResult | None
-    last_error: str
+    execution_result: PipelineResult | None
     final_status: str
-    attempt: int
-
-
-# ---------------------------------------------------------------------------
-# Nodes
-# ---------------------------------------------------------------------------
 
 
 def inspect_node(state: PipelineState) -> dict:
-    """Inspect the actual data — schema, types, quality, recommendations."""
-    log.info("[bold cyan]Phase 0: Inspecting data...[/]")
-    meta = state["metadata_path"].strip() or None
-
+    log.info("[bold cyan]Phase 1: Inspecting data...[/]")
+    meta = state["metadata_path"] if state["metadata_path"] else None
     profile = inspect_data(state["data_path"], meta)
     log.info(f"\n{profile.to_prompt_context()}")
     return {"data_profile": profile}
 
 
-def plan_node(state: PipelineState) -> dict:
-    """Plan with full data awareness — the LLM sees actual column names, types, warnings."""
-    log.info("[bold cyan]Phase 1: Planning workflow...[/]")
+def select_node(state: PipelineState) -> dict:
+    """LLM picks templates + fills params. No code generation."""
+    log.info("[bold cyan]Phase 2: Selecting workflow templates...[/]")
     profile = state["data_profile"]
     assert profile is not None
-
-    data_info = profile.to_prompt_context()
-    if state["data_info"].strip():
-        data_info = (
-            f"USER DATA DESCRIPTION:\n{state['data_info'].strip()}\n\n{data_info}"
-        )
-
-    if state["last_error"]:
-        data_info += (
-            f"\n\n⚠️ PREVIOUS ATTEMPT FAILED WITH:\n{state['last_error'][:500]}\n"
-            f"Adjust the plan to avoid this error."
-        )
-
-    plan = plan_workflow(state["query"], data_info)
-    return {"plan": plan}
+    steps = select_templates(state["query"], profile)
+    for s in steps:
+        log.info(f"  → {s['template_id']}: {s.get('params', {})}")
+    return {"selected_steps": steps}
 
 
-def code_node(state: PipelineState) -> dict:
-    """Generate code — prompts include actual data profile so code references real columns."""
-    log.info("[bold cyan]Phase 2: Generating step code...[/]")
-    plan = state["plan"]
-    assert plan is not None
+def assemble_node(state: PipelineState) -> dict:
+    """Stitch pre-validated templates into a runnable script (built-in adapter if none)."""
+    log.info("[bold cyan]Phase 3: Assembling script from templates...[/]")
     profile = state["data_profile"]
     assert profile is not None
-    profile_text = profile.to_prompt_context()
+    analysis_type = profile.inferred_experiment or "bulk_rnaseq"
 
-    for step in plan.steps:
-        step.description = (
-            f"{step.description}\n\n"
-            f"ACTUAL DATA CONTEXT:\n{profile_text}"
-        )
-
-    step_codes = generate_all_steps(plan)
-    return {"step_codes": step_codes}
-
-
-def link_node(state: PipelineState) -> dict:
-    log.info("[bold cyan]Phase 3: Linking into script...[/]")
-    plan = state["plan"]
-    step_codes = state["step_codes"]
-    assert plan is not None and step_codes is not None
-    script = link_steps(plan, step_codes)
+    script = assemble_script(
+        steps=state["selected_steps"],
+        data_path=state["data_path"],
+        output_dir=state["output_dir"],
+        metadata_path=state["metadata_path"],
+        analysis_type=analysis_type,
+    )
     return {"script": script}
 
 
-def verify_node(state: PipelineState) -> dict:
-    log.info("[bold cyan]Phase 4: Verifying script...[/]")
-    script = state["script"]
-    plan = state["plan"]
-    assert script is not None and plan is not None
-    result = verify_script(
-        script=script,
-        plan=plan,
+def execute_node(state: PipelineState) -> dict:
+    """Run the pipeline in-process (stepwise execution with validation)."""
+    log.info("[bold cyan]Phase 4: Executing pipeline in-process...[/]")
+    profile = state["data_profile"]
+    assert profile is not None
+    result = execute_pipeline(
+        selected_steps=state["selected_steps"],
         data_path=state["data_path"],
         output_dir=state["output_dir"],
+        metadata_path=state["metadata_path"] or "",
+        profile=profile,
+        params={},
     )
-    return {"verification": result}
+    if result.success:
+        log.info("[bold green]  ✓ Execution successful[/]")
+    else:
+        for e in result.errors:
+            log.warning(f"  ✗ {e}")
+    return {"execution_result": result}
 
 
-def recover_node(state: PipelineState) -> dict:
-    """If verification failed, diagnose and repair — not a blind retry."""
-    v = state["verification"]
-    attempt = state["attempt"]
-    assert v is not None
-
-    if v.passed:
-        log.info("[bold green]✓ All checks passed[/]")
+def decide_node(state: PipelineState) -> dict:
+    er = state.get("execution_result")
+    if er and er.success:
+        log.info("[bold green]✓ Workflow generated successfully[/]")
         return {"final_status": "success"}
-
-    if attempt >= 3:
-        log.warning(f"[bold red]✗ Failed after {attempt} attempts[/]")
-        for issue in v.issues:
-            log.warning(f"  - {issue}")
-        return {"final_status": "failed"}
-
-    log.warning(f"[bold yellow]⟳ Attempt {attempt}: diagnosing failure...[/]")
-
-    exec_errors = [i for i in v.issues if i.startswith("[EXEC]")]
-    error_text = exec_errors[0] if exec_errors else "; ".join(v.issues)
-
-    diagnosis = classify_error(error_text)
-    log.info(f"  Category: {diagnosis['category']}")
-    log.info(f"  Hint: {diagnosis['fix_hint']}")
-
-    profile = state.get("data_profile")
-    profile_text = profile.to_prompt_context() if profile else ""
-    script = state.get("script") or ""
-
-    try:
-        repaired = repair_script(
-            script=script,
-            error_text=error_text,
-            data_profile_text=profile_text,
-        )
-        return {
-            "script": repaired,
-            "last_error": error_text,
-            "final_status": "needs_fix",
-            "attempt": attempt + 1,
-        }
-    except Exception as e:
-        log.error(f"  Repair failed: {e}")
-        return {
-            "last_error": error_text,
-            "final_status": "needs_fix",
-            "attempt": attempt + 1,
-        }
-
-
-# ---------------------------------------------------------------------------
-# Routing
-# ---------------------------------------------------------------------------
-
-
-def route_after_recover(state: PipelineState):
-    if state["final_status"] == "needs_fix":
-        return "verify"
-    return END
-
-
-# ---------------------------------------------------------------------------
-# Graph
-# ---------------------------------------------------------------------------
+    log.warning("[bold red]✗ Execution failed — see logs above[/]")
+    return {"final_status": "failed"}
 
 
 def build_graph():
     g = StateGraph(PipelineState)
-
     g.add_node("inspect", inspect_node)
-    g.add_node("plan", plan_node)
-    g.add_node("code", code_node)
-    g.add_node("link", link_node)
-    g.add_node("verify", verify_node)
-    g.add_node("recover", recover_node)
+    g.add_node("select", select_node)
+    g.add_node("assemble", assemble_node)
+    g.add_node("execute", execute_node)
+    g.add_node("decide", decide_node)
 
     g.set_entry_point("inspect")
-    g.add_edge("inspect", "plan")
-    g.add_edge("plan", "code")
-    g.add_edge("code", "link")
-    g.add_edge("link", "verify")
-    g.add_edge("verify", "recover")
-    g.add_conditional_edges("recover", route_after_recover)
+    g.add_edge("inspect", "select")
+    g.add_edge("select", "assemble")
+    g.add_edge("assemble", "execute")
+    g.add_edge("execute", "decide")
+    g.add_edge("decide", END)
 
     return g.compile()
 
@@ -215,25 +123,18 @@ def run_pipeline(
     output_dir: str,
     data_info: str = "",
     metadata_path: str = "",
-) -> PipelineState:
-    """Run the full inspect → generate → verify → recover pipeline."""
+) -> dict:
+    """Run the full pipeline: inspect → select → assemble → execute."""
     graph = build_graph()
-
-    initial_state: PipelineState = {
+    initial: PipelineState = {
         "query": query,
         "data_path": data_path,
         "metadata_path": metadata_path,
-        "data_info": data_info,
         "output_dir": output_dir,
         "data_profile": None,
-        "plan": None,
-        "step_codes": None,
+        "selected_steps": None,
         "script": None,
-        "verification": None,
-        "last_error": "",
+        "execution_result": None,
         "final_status": "",
-        "attempt": 1,
     }
-
-    final = graph.invoke(initial_state)
-    return cast(PipelineState, final)
+    return graph.invoke(initial)
