@@ -11,7 +11,6 @@ import streamlit as st
 
 st.set_page_config(
     page_title="BioGen",
-    page_icon="🧬",
     layout="wide",
 )
 
@@ -37,17 +36,17 @@ st.markdown("""
 # ---------------------------------------------------------------------------
 # Header
 # ---------------------------------------------------------------------------
-st.title("🧬 BioGen")
+st.title("BioGen")
 st.caption(
     "LLM-powered bioinformatics code generation with execution verification. "
     "Upload your data, describe what you want, get a verified workflow."
 )
 
 # ---------------------------------------------------------------------------
-# Sidebar — data upload
+# Sidebar  -  data upload
 # ---------------------------------------------------------------------------
 with st.sidebar:
-    st.header("📁 Data")
+    st.header("Data")
 
     data_file = st.file_uploader(
         "Count matrix (CSV or h5ad)",
@@ -59,7 +58,7 @@ with st.sidebar:
     )
 
     st.divider()
-    st.header("⚙️ Settings")
+    st.header("Settings")
     data_info = st.text_input(
         "Describe your data format",
         value="CSV count matrix with genes as rows, samples as columns. "
@@ -78,16 +77,16 @@ with st.sidebar:
             st.session_state["query_input"] = ex
 
 # ---------------------------------------------------------------------------
-# Main area — query input
+# Main area  -  query input
 # ---------------------------------------------------------------------------
 query = st.text_area(
-    "🔬 What analysis do you want to run?",
+    "What analysis do you want to run?",
     value=st.session_state.get("query_input", ""),
     height=80,
     placeholder="e.g., Run differential expression comparing treated vs control...",
 )
 
-run_btn = st.button("▶ Generate & Verify", type="primary", use_container_width=True)
+run_btn = st.button("Generate & Verify", type="primary", use_container_width=True)
 
 # ---------------------------------------------------------------------------
 # Run pipeline
@@ -111,7 +110,7 @@ if run_btn and query and data_file:
     status = st.status("Running BioGen pipeline...", expanded=True)
 
     with status:
-        st.write("🗺️ **Phase 1:** Planning workflow...")
+        st.write("**Phase 1:** Planning workflow...")
         start = time.time()
 
         state = run_pipeline(
@@ -127,42 +126,30 @@ if run_btn and query and data_file:
     final_status = state.get("final_status", "unknown")
 
     if final_status == "success":
-        status.update(label=f"✅ Workflow generated & verified ({elapsed:.1f}s)", state="complete")
+        status.update(label=f"OK: Workflow generated & verified ({elapsed:.1f}s)", state="complete")
     else:
-        status.update(label=f"❌ Generation failed ({elapsed:.1f}s)", state="error")
+        status.update(label=f"Failed: Generation failed ({elapsed:.1f}s)", state="error")
 
     col_left, col_right = st.columns([1, 1])
 
     with col_left:
-        plan = state.get("plan")
-        if plan:
-            st.subheader(f"📋 Workflow Plan ({len(plan.steps)} steps)")
-            for s in plan.steps:
-                st.markdown(
-                    f"**Step {s.step_id}:** {s.name}  \n"
-                    f"`{s.tool}` → `{s.output_type}`  \n"
-                    f"_{s.description}_"
-                )
+        steps = state.get("selected_steps") or []
+        if steps:
+            st.subheader(f"Selected templates ({len(steps)})")
+            for i, s in enumerate(steps, start=1):
+                tid = s.get("template_id", "?")
+                params = s.get("params") or {}
+                st.markdown(f"**{i}.** `{tid}` — `{params}`")
                 st.markdown("---")
 
-        v = state.get("verification")
-        if v:
-            st.subheader("🛡️ Verification")
-            checks = [
-                ("AST Validation", v.ast_ok),
-                ("API signatures", v.api_ok),
-                ("Operation order", v.order_ok),
-                ("Dependency graph", v.deps_ok),
-                ("Parameter constraints", v.params_ok),
-                ("Sandbox execution", v.execution_ok),
-            ]
-            for name, passed in checks:
-                icon = "✅" if passed else "❌"
-                st.markdown(f"{icon} {name}")
-
-            if v.issues:
-                with st.expander(f"⚠️ Issues ({len(v.issues)})"):
-                    for issue in v.issues:
+        er = state.get("execution_result")
+        if er is not None:
+            st.subheader("In-process execution")
+            ok = er.success
+            st.markdown(f"**Status:** {'OK' if ok else 'FAILED'}")
+            if er.errors:
+                with st.expander(f"Errors ({len(er.errors)})"):
+                    for issue in er.errors:
                         st.code(issue, language=None)
 
     image_files: list[Path] = []
@@ -171,11 +158,11 @@ if run_btn and query and data_file:
     with col_right:
         script = state.get("script") or ""
         if script:
-            st.subheader("🐍 Generated Workflow")
+            st.subheader("Generated workflow")
             st.code(script, language="python", line_numbers=True)
 
             st.download_button(
-                "⬇️ Download workflow.py",
+                "Download workflow.py",
                 data=script,
                 file_name="workflow.py",
                 mime="text/x-python",
@@ -187,20 +174,20 @@ if run_btn and query and data_file:
             csv_files = [f for f in output_files if f.suffix.lower() == ".csv"]
 
             if image_files:
-                st.subheader("📊 Generated Plots")
+                st.subheader("Generated plots")
                 for img in image_files:
                     st.image(str(img), caption=img.name, use_container_width=True)
 
             if csv_files:
-                st.subheader("📄 Result Tables")
+                st.subheader("Result tables")
                 import pandas as pd
                 for csv_f in csv_files:
                     try:
                         df = pd.read_csv(csv_f)
-                        with st.expander(f"📄 {csv_f.name} ({len(df)} rows)"):
+                        with st.expander(f"{csv_f.name} ({len(df)} rows)"):
                             st.dataframe(df.head(50), use_container_width=True)
                             st.download_button(
-                                f"⬇️ {csv_f.name}",
+                                f"Download {csv_f.name}",
                                 data=csv_f.read_bytes(),
                                 file_name=csv_f.name,
                                 mime="text/csv",

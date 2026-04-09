@@ -80,24 +80,19 @@ async def generate(
                 if f.is_file():
                     output_files[f.name] = _encode_file(f)
 
-        plan_steps: list[dict] = []
-        plan = state.get("plan")
-        if plan is not None:
-            plan_steps = [s.to_dict() for s in plan.steps]
+        plan_steps: list[dict] = state.get("selected_steps") or []
+        profile = state.get("data_profile")
+        analysis_type = (
+            profile.inferred_experiment if profile is not None else "unknown"
+        )
 
-        v = state.get("verification")
+        er = state.get("execution_result")
         verification = {
-            "ast_ok": v.ast_ok if v else False,
-            "api_ok": v.api_ok if v else False,
-            "order_ok": v.order_ok if v else False,
-            "deps_ok": v.deps_ok if v else False,
-            "params_ok": v.params_ok if v else False,
-            "execution_ok": v.execution_ok if v else False,
-            "passed": v.passed if v else False,
+            "execution_ok": er.success if er else False,
+            "passed": er.success if er else False,
         }
 
-        errors = list(v.issues) if v else []
-        analysis_type = plan.analysis_type if plan is not None else "unknown"
+        errors = list(er.errors) if er and er.errors else []
         script = state.get("script") or ""
 
         return GenerateResponse(

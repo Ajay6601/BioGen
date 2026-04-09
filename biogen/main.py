@@ -1,3 +1,6 @@
+###############################################################################
+# FILE: biogen/main.py
+###############################################################################
 """
 BioGen CLI — LLM bioinformatics code generation with execution verification.
 
@@ -14,9 +17,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 from biogen.config import OUTPUT_DIR
-from biogen.utils.logger import get_logger
 
-log = get_logger("biogen")
 console = Console()
 
 
@@ -37,34 +38,38 @@ def cmd_generate(args):
         data_path=args.data,
         output_dir=args.output,
         data_info=args.data_info or "count matrix CSV",
-        metadata_path=args.metadata or "",
+        metadata_path=getattr(args, 'metadata', ''),
     )
 
-    # Print results
-    status = state.get("final_status", "unknown")
-    if status == "success":
-        console.print("\n[bold green]✓ Workflow generated and verified successfully![/]")
+    final_status = state.get("final_status", "unknown")
+    if final_status == "success":
+        console.print("\n[bold green]✓ Pipeline completed successfully![/]")
 
-        # Save the script
-        out_path = Path(args.output) / "workflow.py"
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        out_path.write_text(state["script"])
-        console.print(f"  Script saved to: {out_path}")
+        er = state.get("execution_result")
+        if er and er.output_files:
+            for f in er.output_files:
+                console.print(f"  📄 {f}")
+
+        # Save assembled script for reference
+        if state.get("script"):
+            out_path = Path(args.output) / "workflow.py"
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            out_path.write_text(state["script"], encoding="utf-8")
+            console.print(f"  Script: {out_path}")
     else:
-        console.print(f"\n[bold red]✗ Workflow generation failed (status: {status})[/]")
-        v = state.get("verification")
-        if v and v.issues:
-            for issue in v.issues:
-                console.print(f"  [red]• {issue}[/]")
+        console.print(f"\n[bold red]✗ Pipeline failed[/]")
+        er = state.get("execution_result")
+        if er and er.errors:
+            for err in er.errors:
+                console.print(f"  [red]• {err}[/]")
 
-        # Save the script anyway for debugging
         if state.get("script"):
             debug_path = Path(args.output) / "workflow_debug.py"
             debug_path.parent.mkdir(parents=True, exist_ok=True)
-            debug_path.write_text(state["script"])
-            console.print(f"  Debug script saved to: {debug_path}")
+            debug_path.write_text(state["script"], encoding="utf-8")
+            console.print(f"  Debug script: {debug_path}")
 
-    return 0 if status == "success" else 1
+    return 0 if final_status == "success" else 1
 
 
 def cmd_benchmark(args):
@@ -101,7 +106,8 @@ def cmd_benchmark(args):
     results_path = Path(args.output) / "benchmark_results.md"
     results_path.parent.mkdir(parents=True, exist_ok=True)
     results_path.write_text(
-        f"# BioGen Benchmark Results\n\n{results.summary_table()}\n"
+        f"# BioGen Benchmark Results\n\n{results.summary_table()}\n",
+        encoding="utf-8",
     )
     console.print(f"\nResults saved to: {results_path}")
 
@@ -119,14 +125,9 @@ def cli():
     gen = sub.add_parser("generate", help="Generate a workflow from natural language")
     gen.add_argument("--query", "-q", required=True, help="Natural language query")
     gen.add_argument("--data", "-d", required=True, help="Path to input data")
+    gen.add_argument("--metadata", "-m", default="", help="Path to metadata CSV")
     gen.add_argument("--output", "-o", default=str(OUTPUT_DIR), help="Output directory")
     gen.add_argument("--data-info", help="Description of the data format")
-    gen.add_argument(
-        "--metadata",
-        "-m",
-        default="",
-        help="Optional metadata CSV path (e.g. sample → condition)",
-    )
 
     # benchmark
     bench = sub.add_parser("benchmark", help="Run the evaluation benchmark")

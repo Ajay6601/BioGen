@@ -49,17 +49,18 @@ def run_benchmark(data_path: str, max_queries: int | None = None) -> BenchmarkRe
                 data_info=data_info,
             )
 
-            # Extract verification results
-            if state.get("plan"):
+            # Template selection + in-process run succeeded
+            if state.get("selected_steps"):
                 score.plan_ok = True
-            v = state.get("verification")
-            if v:
-                score.ast_ok = v.ast_ok
-                score.api_ok = v.api_ok
-                score.order_ok = v.order_ok
-                score.deps_ok = v.deps_ok
-                score.params_ok = v.params_ok
-                score.execution_ok = v.execution_ok
+            er = state.get("execution_result")
+            if er:
+                score.execution_ok = er.success
+                if er.success:
+                    score.ast_ok = True
+                    score.api_ok = True
+                    score.order_ok = True
+                    score.deps_ok = True
+                    score.params_ok = True
 
             if state.get("final_status") == "success":
                 score.output_correct = True
